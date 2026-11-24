@@ -1,0 +1,27 @@
+version: 1
+name: pawangunjkar-web-browser-mcp
+description: "Playwright web browser MCP server with 33 tools: one-shot web research (search + read top pages), page reading and interaction with element refs, tabs and screenshots, and LinkedIn profile editing with human-approved saves. Hosted mode runs headless research tools; LinkedIn editing runs locally."
+runtime: python
+entry: server.py
+
+build:
+  command: python -m py_compile server.py browser_manager.py config.py linkedin.py web_research.py
+
+startCommand:
+  type: http
+  command: python server.py --http
+
+credentials_mode: per_user
+credentials:
+  - name: BROWSER_ALLOWED_DOMAINS
+    description: "Optional comma-separated list of sites the browser may open (subdomains included)."
+    required: false
+    placeholder: "github.com,docs.python.org"
+  - name: BROWSER_BLOCKED_DOMAINS
+    description: "Optional comma-separated list of sites the browser must never open."
+    required: false
+    placeholder: "example-bad.com"
+  - name: BROWSER_TIMEOUT_MS
+    description: "Page load timeout in milliseconds (default: 30000)."
+    required: false
+    placeholder: "30000"

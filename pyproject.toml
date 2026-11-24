@@ -1,0 +1,64 @@
+[project]
+name = "web-browser-mcp"
+version = "1.0.0"
+description = "MCP server that drives a real Chrome browser with Playwright — web research, page reading and interaction, and LinkedIn profile editing with human approval"
+requires-python = ">=3.10"
+authors = [
+    { name = "Pawan Gunjkar", email = "pawangunjkar@gmail.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["mcp", "model-context-protocol", "playwright", "browser", "chrome", "web-research", "linkedin", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "mcp[cli]>=1.0.0,<2",
+    "playwright>=1.45",
+]
+
+[project.scripts]
+web-browser-mcp = "server:main"
+
+[project.urls]
+Homepage = "https://github.com/Pawangunjkar/web-browser-mcp"
+Repository = "https://github.com/Pawangunjkar/web-browser-mcp"
+Issues = "https://github.com/Pawangunjkar/web-browser-mcp/issues"
+Documentation = "https://github.com/Pawangunjkar/web-browser-mcp#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.hatch.build.targets.wheel.force-include]
+"server.py" = "server.py"
+"browser_manager.py" = "browser_manager.py"
+"config.py" = "config.py"
+"linkedin.py" = "linkedin.py"
+"web_research.py" = "web_research.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "server.py",
+    "browser_manager.py",
+    "config.py",
+    "linkedin.py",
+    "web_research.py",
+    "tests/*.py",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+]

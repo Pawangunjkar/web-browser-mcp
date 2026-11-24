@@ -1,0 +1,32 @@
+# Smithery.ai configuration — https://smithery.ai/docs/build/publish
+# Submit this repo at https://smithery.ai after publishing to PyPI
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      BROWSER_CHANNEL:
+        type: string
+        description: "'chrome' (installed Google Chrome), 'msedge', or 'chromium' (bundled)"
+      BROWSER_HEADLESS:
+        type: string
+        description: "'false' shows the browser window (needed to sign in to sites)"
+      BROWSER_ALLOWED_DOMAINS:
+        type: string
+        description: Optional comma-separated allowlist of sites
+      LINKEDIN_MAX_WRITES_PER_DAY:
+        type: string
+        description: Daily cap on LinkedIn edits (default 20)
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: 'uvx',
+      args: ['web-browser-mcp'],
+      env: Object.fromEntries(
+        Object.entries(config).filter(([_, v]) => v != null && v !== '')
+      )
+    })
+  exampleConfig:
+    BROWSER_CHANNEL: "chrome"
+    BROWSER_HEADLESS: "false"
