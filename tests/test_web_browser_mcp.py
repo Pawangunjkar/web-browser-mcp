@@ -269,6 +269,7 @@ class McpProtocolTests(BrowserTestCase):
                 return names, nav, shot
 
         names, nav, shot = self.run_async(scenario())
+        self.assertEqual(server.mcp._mcp_server.version, server.__version__)
         self.assertEqual(len(names), 33)
         self.assertIn("Page Two", nav.content[0].text)
         self.assertEqual(shot.content[0].type, "image")

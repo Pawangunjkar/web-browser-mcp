@@ -138,7 +138,7 @@ uv run web-browser-mcp
 ### Claude Code
 
 ```bash
-claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp run web-browser-mcp
+claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp run --frozen web-browser-mcp
 ```
 
 ### Claude Desktop / Cursor / Antigravity / Windsurf / Cline
@@ -148,7 +148,7 @@ claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp r
   "mcpServers": {
     "web-browser": {
       "command": "uv",
-      "args": ["--directory", "/absolute/path/to/web-browser-mcp", "run", "web-browser-mcp"],
+      "args": ["--directory", "/absolute/path/to/web-browser-mcp", "run", "--frozen", "web-browser-mcp"],
       "env": {
         "BROWSER_CHANNEL": "chrome"
       }
@@ -156,6 +156,26 @@ claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp r
   }
 }
 ```
+
+**Offline / enterprise startup alternative (skip `uv` on every start):**
+
+Point your client directly at the virtual environment's Python interpreter so startup never contacts PyPI:
+
+```json
+{
+  "mcpServers": {
+    "web-browser": {
+      "command": "C:\\AI_Workspaces\\Anti_Workspace\\web-browser-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "web_browser_mcp"],
+      "env": {
+        "BROWSER_CHANNEL": "chrome"
+      }
+    }
+  }
+}
+```
+
+*(On macOS/Linux use `/absolute/path/to/web-browser-mcp/.venv/bin/python`.)*
 
 On Windows, use an escaped path such as `C:\\AI_Workspaces\\Anti_Workspace\\web-browser-mcp`.
 

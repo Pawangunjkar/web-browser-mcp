@@ -25,6 +25,8 @@ from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP, Image
 
+from web_browser_mcp import __version__
+
 from web_browser_mcp import web_research as research
 from web_browser_mcp.browser_manager import MAX_TEXT_CHARS, BrowserError, BrowserManager, settle
 from web_browser_mcp.config import BrowserSettings, WriteLimiter
@@ -58,6 +60,7 @@ mcp = FastMCP(
         "persistent browser profile (default: 'default')."
     ),
 )
+mcp._mcp_server.version = __version__
 
 _settings = BrowserSettings.from_env()
 _browser = BrowserManager(_settings)
