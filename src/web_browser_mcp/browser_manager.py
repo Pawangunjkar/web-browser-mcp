@@ -33,7 +33,7 @@ from playwright.async_api import (
     async_playwright,
 )
 
-from config import BrowserSettings, check_url_allowed, normalize_url
+from web_browser_mcp.config import BrowserSettings, check_url_allowed, normalize_url
 
 MAX_TEXT_CHARS = 15_000
 MAX_SNAPSHOT_ELEMENTS = 150

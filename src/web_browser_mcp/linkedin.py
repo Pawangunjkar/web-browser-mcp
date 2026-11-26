@@ -21,8 +21,8 @@ from typing import Any, Optional
 
 from playwright.async_api import Error as PlaywrightError, Locator, Page
 
-from browser_manager import BrowserError, BrowserManager, settle
-from config import WriteLimiter
+from web_browser_mcp.browser_manager import BrowserError, BrowserManager, settle
+from web_browser_mcp.config import WriteLimiter
 
 HEADLINE_LIMIT = 220
 ABOUT_LIMIT = 2600

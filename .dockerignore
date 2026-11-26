@@ -10,10 +10,6 @@ __pycache__
 .pytest_cache
 .mypy_cache
 .ruff_cache
-agensi_build/
-agensi_packages/
-_agensi_commercial_dist/
-_mcpize_bundles/
 dist/
 build/
 scripts/
@@ -21,7 +17,6 @@ tests/
 .env
 .env.*
 !.env.example
-.mcpize/
 .cursor/
 .vscode/
 .idea/

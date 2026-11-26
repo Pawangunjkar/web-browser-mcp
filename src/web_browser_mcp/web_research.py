@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, quote_plus, urlsplit
 
 from playwright.async_api import BrowserContext
 
-from browser_manager import BrowserError, BrowserManager
+from web_browser_mcp.browser_manager import BrowserError, BrowserManager
 
 SEARCH_ENGINES = {
     "duckduckgo": "https://html.duckduckgo.com/html/?q={q}",

@@ -147,19 +147,10 @@ cython_debug/
 .idea/
 .cursor/mcp.json
 
-# Commercial Agensi Pro Skills (Proprietary - Do not commit)
-agensi_build/
-# Skill packaging scripts (Proprietary - Do not commit)
+# Local helper scripts and caches
 scripts/
-
-# Commercial Agensi Files & Distribution
-agensi_packages/
-_agensi_commercial_dist/
-_mcpize_bundles/
+.ruff_cache/
 dist/*.zip
-
-# MCPize CLI state
-.mcpize/
 
 # Local browser profiles / state (contain your logins)
 .web-browser-mcp/

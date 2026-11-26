@@ -1,6 +1,6 @@
 # 🌐 Web Browser MCP Server
 
-> A Python **Model Context Protocol (MCP)** server that lets AI assistants drive a **real Chrome browser** with Playwright — on **any website**: research the web, read your webmail, browse job portals like Naukri, fill in forms, and keep your **LinkedIn profile** polished. You sign in yourself, and nothing is sent, posted, or saved without your approval.
+> A Python **Model Context Protocol (MCP)** server that drives a **real Chrome browser** with Playwright — research the web in parallel, read and interact with any website using deterministic element refs, and keep your **LinkedIn profile** updated with human-in-the-loop confirmation.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![MCP Protocol](https://img.shields.io/badge/protocol-MCP-green.svg)](https://modelcontextprotocol.io/)
@@ -11,8 +11,10 @@
 
 ## 📋 Table of Contents
 
-- [What It Does](#-what-it-does)
+- [Features](#-features)
+- [How It Works](#-how-it-works)
 - [Safety Model](#-safety-model)
+- [Project Layout](#-project-layout)
 - [Installation](#-installation)
 - [Configuring Your AI Client](#-configuring-your-ai-client)
 - [First Run: Sign In to LinkedIn](#-first-run-sign-in-to-linkedin)
@@ -26,49 +28,96 @@
 
 ---
 
-## ✨ What It Does
+## ✨ Features
 
-| Area | What the AI can do |
+| Area | What It Provides |
 |---|---|
-| **Web research** | `web_research` searches the web and reads the top results in parallel in one call, ready to summarise with sources. `web_search` and `web_read_page` for finer control. |
-| **Any website** | Open pages, read text (paged), list links, take screenshots, and interact: click, type, choose dropdown options, press keys, scroll, manage tabs. |
-| **Reliable element targeting** | `browser_snapshot` lists every clickable/fillable element with a short ref (`e12`), so actions hit exactly the right button or field. Pop-ups/modals are detected and can be listed on their own. |
-| **LinkedIn profile** | Read your whole profile, then update your **headline**, **About** section, and **skills** — each with a preview of current vs. new text first. Any other section (experience, education, certifications, projects) can be edited through its form. |
-| **Your real logins** | Each `session_name` is a persistent browser profile. Sign in once and stay signed in across restarts; keep separate profiles for different purposes. |
+| **Parallel Web Research** | `web_research` searches and reads the top results concurrently across background tabs in one call. `web_search` and `web_read_page` give step-by-step control. |
+| **Any Website Navigation & Reading** | Open URLs, follow redirects, inspect paged text (with `main_content_only` filtering), extract links, and return viewport, full-page, or element screenshots as images. |
+| **Element Ref Targeting** | `browser_snapshot` indexes every interactive element on the page (or inside an open modal via `scope="dialog"`) with short refs (`e1`, `e2`, …) for reliable clicking, filling, and dropdown selection. |
+| **Persistent Browser Profiles** | Each `session_name` maps to a persistent Playwright user-data directory on disk (`~/.web-browser-mcp`). Sign in once and stay signed in across restarts, or isolate work/personal sessions. |
+| **LinkedIn Profile Management** | Read structured profile sections (`about`, `experience`, `education`, `skills`, etc.), preview and save headline/About/skill updates, or open section forms with mapped fields. |
+| **Built-in Guardrails** | Refuses to type into password, card-number, or OTP fields; gates submit/save/send/delete actions and all LinkedIn edits behind preview + `confirm=true`; reports CAPTCHAs instead of bypassing them. |
+| **stdio & HTTP Transports** | Runs over `stdio` for local IDEs by default, or `streamable-http` / `sse` with a `/health` endpoint via `--http` or `MCP_TRANSPORT`. |
 
-**It works on any site you can use in a browser**, for example:
+**Works on any site you use in Chrome**, for example:
 
-| Site type | Examples of what you can ask |
-|---|---|
-| Job portals (Naukri, LinkedIn Jobs, Indeed) | Search jobs, read listings, compare roles, update your profile — clicking **Apply** needs your approval |
-| Webmail (Gmail, Outlook) | Read and summarise your inbox, find an email, draft a reply — clicking **Send** needs your approval |
-| Docs, blogs, news, GitHub | Read, extract, and summarise pages; take screenshots |
-| Any web form | Fill fields and dropdowns; submitting needs your approval |
+- **Job portals (Naukri, LinkedIn Jobs, Indeed):** search jobs, read descriptions, compare roles; clicking *Apply* requires confirmation.
+- **Webmail (Gmail, Outlook):** read and summarize unread threads or draft replies; clicking *Send* requires confirmation.
+- **Docs, blogs, GitHub:** read long pages in chunks, extract links, capture screenshots.
+- **Web forms:** fill inputs and dropdowns by ref; submitting requires confirmation.
 
-LinkedIn simply has extra one-call tools (headline, About, skills); everywhere else the general `browser_*` tools do the work.
+---
 
-It runs **Google Chrome** installed on your machine by default (or Microsoft Edge, or Playwright's bundled Chromium).
+## ⚙️ How It Works
+
+```text
+AI Client (Claude, Cursor, Antigravity, Windsurf, Cline)
+        │
+        │  MCP (stdio by default, or streamable-http / sse)
+        ▼
+web_browser_mcp.server (FastMCP — 33 tools + /health)
+        ├── BrowserManager (browser_manager.py)
+        │     ├── Persistent Playwright Chromium/Chrome/Edge contexts per session_name
+        │     ├── URL policy check (http/https only, allowlist/blocklist)
+        │     ├── Snapshot DOM walker -> assigns short refs (e1, e2, ...) + dialog scoping
+        │     └── Submit/secret heuristics -> gates mutating clicks, blocks password/OTP fills
+        ├── Web Research (web_research.py)
+        │     ├── DuckDuckGo HTML -> automatic Bing fallback on bot check
+        │     ├── Unwraps search redirect URLs (uddg / base64 u=)
+        │     └── Concurrent background tabs extract main readable article text
+        └── LinkedInHelper + WriteLimiter (linkedin.py, config.py)
+              ├── Reads profile sections and opens native section edit dialogs
+              ├── Enforces preview-before-save (confirm=true) + post-save verification
+              └── Persists daily edit count & cooldown across restarts
+```
+
+1. **Session & Profile Lifecycle:** Calling any tool starts (or reuses) the named `session_name` browser context using installed Google Chrome (`BROWSER_CHANNEL=chrome`), Microsoft Edge (`msedge`), or Playwright's bundled Chromium (`chromium`). Each session stores cookies and local storage under `~/.web-browser-mcp/<session_name>`.
+2. **Deterministic Ref Targeting:** `browser_snapshot` inspects visible interactive controls in the DOM and stores locator metadata on the session. Subsequent `browser_click`, `browser_fill`, or `browser_select_option` calls resolve `ref="e12"` directly, and stale refs after navigation tell the client to re-snapshot.
+3. **Human-in-the-Loop Confirmation:** When `browser_click` targets a button matching save/submit/send/post/delete/buy/apply heuristics (or when any LinkedIn edit tool is called without `confirm=true`), the server stops and returns a preview so the user can approve before the action runs.
+4. **Parallel Research:** `web_research` executes `web_search`, unwraps tracking links, and opens background tabs concurrently with `asyncio.gather` to extract clean article text while flagging sign-in walls or CAPTCHAs.
 
 ---
 
 ## 🛡️ Safety Model
 
-Designed so an AI can help with real accounts without surprises:
-
-| Protection | How it works |
+| Protection | How It Works |
 |---|---|
-| **You sign in, not the AI** | `linkedin_open_login` opens the sign-in page in a visible window; you type your own password and 2-step code. The server **refuses to type into password, card-number, or one-time-code fields** on any site. |
-| **Preview before every change** | LinkedIn edits return *current vs. new* first and only save when called again with `confirm=true` after you approve. Generic clicks on buttons such as Save, Submit, Post, Send, Delete, Buy, Follow, or Connect are gated the same way. |
-| **Human pace on LinkedIn** | At most 20 edits per day and 10 s between edits by default (configurable). The daily count survives restarts. |
-| **No CAPTCHA bypassing** | Bot checks are reported, never solved or evaded. Searches fall back to another engine; otherwise you solve it yourself in the window. |
-| **Site restrictions** | Optional allowlist/blocklist of domains. `file://`, `javascript:`, and browser-internal URLs are blocked by default. Downloads are disabled. |
-| **Local by default** | Profiles live in `~/.web-browser-mcp` on your machine. HTTP mode listens on `127.0.0.1` unless you set `HOST`. |
+| **You sign in, not the AI** | `linkedin_open_login` opens a visible browser window so you enter your own credentials and 2FA. `browser_fill` **refuses to type into password, credit-card, or one-time-code fields** on any site. |
+| **Preview before every change** | LinkedIn tools return *current vs. new* text first and only save when called again with `confirm=true`. Mutating clicks (`Save`, `Submit`, `Post`, `Send`, `Delete`, `Buy`, `Follow`, `Connect`) follow the same gate. |
+| **Rate limiting on LinkedIn** | Enforces a daily cap (default 20 edits/day) and minimum cooldown (default 10 s between edits), persisted on disk across server restarts. |
+| **No CAPTCHA bypassing** | Bot challenges are reported to the user; `web_search` falls back across search engines rather than attempting to solve or evade challenges. |
+| **URL & download guardrails** | `file://`, `javascript:`, and browser-internal URLs are blocked by default. Optional `BROWSER_ALLOWED_DOMAINS` / `BROWSER_BLOCKED_DOMAINS` restrict navigation; file downloads are disabled. |
+| **Local-first defaults** | Profiles stay in `~/.web-browser-mcp`. HTTP mode binds to `127.0.0.1` unless `HOST` is overridden. |
+
+---
+
+## 📁 Project Layout
+
+```text
+web-browser-mcp/
+├── src/web_browser_mcp/
+│   ├── __init__.py          # Package version
+│   ├── __main__.py          # `python -m web_browser_mcp` entry point
+│   ├── server.py            # FastMCP instance, 33 tools, /health, CLI transport setup
+│   ├── browser_manager.py   # Persistent Playwright contexts, snapshots, refs, click/fill guards
+│   ├── web_research.py      # Search engine fallback, redirect unwrapping, parallel tab reader
+│   ├── linkedin.py          # LinkedIn login check, profile reader, section editors
+│   └── config.py            # Environment settings, URL policy, persistent WriteLimiter
+├── tests/
+│   ├── fake_site.py         # Local HTTP mock server (pages, search engines, LinkedIn UI)
+│   └── test_web_browser_mcp.py
+├── pyproject.toml           # Hatchling build config + `web-browser-mcp` console script
+├── Dockerfile               # Headless Chromium container (HTTP mode, LinkedIn disabled)
+├── mcpize.yaml              # Hosted HTTP runtime config
+└── smithery.yaml            # Smithery stdio config
+```
 
 ---
 
 ## 📦 Installation
 
-Requires **Python 3.10+** and **Google Chrome** (or set `BROWSER_CHANNEL=chromium` and run `playwright install chromium`).
+Requires **Python 3.10+**, [uv](https://docs.astral.sh/uv/), and **Google Chrome** (or Microsoft Edge, or set `BROWSER_CHANNEL=chromium` and run `uv run playwright install chromium`).
 
 ```bash
 git clone https://github.com/Pawangunjkar/web-browser-mcp.git
@@ -76,10 +125,10 @@ cd web-browser-mcp
 uv sync                       # or: pip install -e .
 ```
 
-Check it starts (Ctrl+C to stop):
+Verify the server starts over stdio (`Ctrl+C` to stop):
 
 ```bash
-uv run server.py
+uv run web-browser-mcp
 ```
 
 ---
@@ -89,17 +138,17 @@ uv run server.py
 ### Claude Code
 
 ```bash
-claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp run server.py
+claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp run web-browser-mcp
 ```
 
-### Claude Desktop / Cursor / Windsurf / Cline
+### Claude Desktop / Cursor / Antigravity / Windsurf / Cline
 
 ```json
 {
   "mcpServers": {
     "web-browser": {
       "command": "uv",
-      "args": ["--directory", "/absolute/path/to/web-browser-mcp", "run", "server.py"],
+      "args": ["--directory", "/absolute/path/to/web-browser-mcp", "run", "web-browser-mcp"],
       "env": {
         "BROWSER_CHANNEL": "chrome"
       }
@@ -108,129 +157,128 @@ claude mcp add web-browser -- uv --directory /absolute/path/to/web-browser-mcp r
 }
 ```
 
-On Windows use a path like `C:\\AI_Workspaces\\web-browser-mcp`.
+On Windows, use an escaped path such as `C:\\AI_Workspaces\\Anti_Workspace\\web-browser-mcp`.
 
 ---
 
 ## 🔑 First Run: Sign In to LinkedIn
 
-1. Ask your assistant: *"Open LinkedIn login."* → it calls `linkedin_open_login` and a Chrome window opens.
-2. **Sign in yourself** in that window (email, password, any verification code). Tick "Keep me signed in".
-3. Ask: *"Check my LinkedIn login."* → `linkedin_check_login` confirms and shows your profile URL.
+1. Ask your assistant: *"Open LinkedIn login."* → it calls `linkedin_open_login` and opens a visible Chrome window.
+2. **Sign in yourself** in that window (email, password, any 2-step code) and optionally tick "Keep me signed in".
+3. Ask: *"Check my LinkedIn login."* → `linkedin_check_login` verifies the session and reports your profile URL.
 
-You stay signed in for future sessions because the browser profile is saved. To sign out completely, use `browser_clear_profile` (confirmation required).
+Because the browser profile persists on disk, you stay signed in across restarts. To wipe a saved profile and sign out everywhere, call `browser_clear_profile(confirm=true)`.
 
 ---
 
 ## 💬 Example Prompts
 
 - *"Read my LinkedIn profile and suggest a stronger headline for a senior DevOps / platform engineer. Show me options first."*
-- *"Rewrite my About section to highlight Kubernetes, CI/CD and MCP servers I've built. Keep it under 2,000 characters and show the preview."*
-- *"Add the skills Terraform, Argo CD and GitHub Actions to my profile if they're missing."*
-- *"Research the current best practices for LinkedIn headlines for DevOps engineers and summarise them with sources."*
+- *"Rewrite my About section to highlight Kubernetes, CI/CD, and MCP servers I've built. Keep it under 2,000 characters and show the preview."*
+- *"Add Terraform, Argo CD, and GitHub Actions to my LinkedIn skills if they're missing."*
+- *"Research best practices for Kubernetes canary rollouts and summarize the top sources."*
 - *"Open Naukri, search for Senior DevOps Engineer jobs in Pune with 8+ years, and list the top 10 with company and salary."*
-- *"Open my Gmail and summarise the unread emails from today."* (sign in yourself the first time)
-- *"Open the Playwright Python docs, find how persistent contexts work, and give me an example."*
-- *"Go to my GitHub profile page and take a screenshot."*
+- *"Open my Gmail and summarize today's unread emails."*
+- *"Open the Playwright Python docs, find how persistent contexts work, and take a screenshot."*
 
 ---
 
 ## 🧰 Complete Tool Reference (33 tools)
 
-Every tool takes an optional `session_name` (default `"default"`); each name is its own persistent browser profile.
+Every tool accepts an optional `session_name` (default `"default"`). Each session maintains its own persistent browser profile.
 
 ### Category 1: Browser Sessions (5)
 
 | Tool | Description |
 |---|---|
-| `browser_launch` | Start a session with options (visible/headless, chrome/msedge/chromium, start URL). Sessions also start automatically. |
-| `browser_close` | Close a session (profile kept on disk). |
-| `browser_close_all` | Close every session. |
-| `browser_status` | Running sessions, tabs, active page, profile folders. |
-| `browser_clear_profile` | Delete a saved profile — signs out everywhere. **Confirmation-gated.** |
+| `browser_launch` | Start a session (`headless`, `channel`, `start_url`). Sessions also auto-start on first use. |
+| `browser_close` | Close a running session (keeps the saved profile on disk). |
+| `browser_close_all` | Close all active sessions. |
+| `browser_status` | List running sessions, open tabs, active page, and profile directories. |
+| `browser_clear_profile` | Delete a saved profile directory. **Requires `confirm=true`.** |
 
 ### Category 2: Navigation (5)
 
 | Tool | Description |
 |---|---|
-| `browser_navigate` | Open a URL in the active tab. |
-| `browser_back` / `browser_forward` / `browser_reload` | History and reload. |
-| `browser_wait_for` | Wait for text, an element, or a URL change (e.g. after you sign in). |
+| `browser_navigate` | Open a URL in the active tab (enforces URL scheme and domain policies). |
+| `browser_back` / `browser_forward` / `browser_reload` | History navigation and page reload. |
+| `browser_wait_for` | Wait for text, a selector, or a URL change (useful after manual sign-in). |
 
 ### Category 3: Reading Pages (4)
 
 | Tool | Description |
 |---|---|
-| `browser_get_text` | Visible text of the page or one element, paged with `offset` / `next_offset`; optional main-content-only mode. |
-| `browser_snapshot` | Interactive elements with refs (`e1`, `e2`, …); `scope="dialog"` lists only an open pop-up. |
-| `browser_get_links` | Links on the page, optionally filtered. |
-| `browser_screenshot` | Screenshot of the viewport, full page, or one element (returned as an image). |
+| `browser_get_text` | Read visible text of the page or a selector, paginated via `offset` / `next_offset`; supports `main_content_only`. |
+| `browser_snapshot` | List interactive elements with short refs (`e1`, `e2`, …); `scope="dialog"` targets only an open modal. |
+| `browser_get_links` | List page links, optionally filtered by substring. |
+| `browser_screenshot` | Capture viewport, full page, or a specific ref as a JPEG image. |
 
 ### Category 4: Interacting (5)
 
 | Tool | Description |
 |---|---|
-| `browser_click` | Click by ref, selector, or text. Save/submit/post/delete-style clicks need `confirm=true`. |
-| `browser_fill` | Type into a field (optionally press Enter). Password/card/OTP fields are refused. |
-| `browser_select_option` | Choose a dropdown option. |
+| `browser_click` | Click by `ref`, `selector`, or `text`. Save/submit/send/post/delete clicks require `confirm=true`. |
+| `browser_fill` | Type into an input (optionally press Enter). Refuses password, card, and OTP fields. |
+| `browser_select_option` | Select a dropdown option by value or label. |
 | `browser_press_key` | Press a key or shortcut (`Enter`, `Escape`, `Control+A`, …). |
-| `browser_scroll` | Scroll up/down/top/bottom or bring an element into view. |
+| `browser_scroll` | Scroll `up`, `down`, `top`, `bottom`, or scroll an element ref into view. |
 
 ### Category 5: Tabs (4)
 
 | Tool | Description |
 |---|---|
-| `browser_list_tabs` / `browser_new_tab` / `browser_switch_tab` / `browser_close_tab` | Manage tabs; links that open new tabs switch to them automatically. |
+| `browser_list_tabs` / `browser_new_tab` / `browser_switch_tab` / `browser_close_tab` | Inspect and manage tabs; links that open popups/new tabs switch automatically. |
 
 ### Category 6: Web Research (3)
 
 | Tool | Description |
 |---|---|
-| `web_research` | Search + read the top N results in parallel, in one call. |
-| `web_search` | Titles, real URLs (redirects unwrapped), and snippets. `engine="auto"` tries DuckDuckGo, then Bing. |
-| `web_read_page` | Main readable text of a URL, read in a background tab. Bot-check / sign-in walls are flagged. |
+| `web_research` | Search and read the top `num_pages` results in parallel in one call. |
+| `web_search` | Return titles, unwrapped URLs, and snippets (`engine="auto"` tries DuckDuckGo then Bing). |
+| `web_read_page` | Extract main readable text from a URL in a background tab, flagging bot checks or login walls. |
 
 ### Category 7: LinkedIn Profile (7)
 
 | Tool | Description |
 |---|---|
-| `linkedin_open_login` | Open the sign-in page in a visible window for you to sign in. |
-| `linkedin_check_login` | Signed in? Whose profile? Edits used today. |
-| `linkedin_get_my_profile` | Name, headline, location, and chosen sections; `include_details=true` reads the full "See all" lists. |
-| `linkedin_update_headline` | Preview, then save a new headline (≤ 220 chars) and verify it on the profile. |
-| `linkedin_update_about` | Preview, then replace the About section (≤ 2,600 chars). |
-| `linkedin_add_skills` | Add up to 10 skills per call; skills already on the profile are skipped. |
-| `linkedin_open_section_editor` | Open the form for intro/about/skills/experience/education/certifications/projects and list its fields, for edits without a dedicated tool. |
+| `linkedin_open_login` | Open LinkedIn sign-in in a visible window so you can log in manually. |
+| `linkedin_check_login` | Verify sign-in status, profile URL, and remaining daily edits. |
+| `linkedin_get_my_profile` | Read name, headline, location, and chosen sections (`include_details=true` expands "See all" lists). |
+| `linkedin_update_headline` | Preview, then save headline (≤ 220 chars) with `confirm=true` and verify on profile. |
+| `linkedin_update_about` | Preview, then replace About section (≤ 2,600 chars) with `confirm=true`. |
+| `linkedin_add_skills` | Add up to 10 skills per call, skipping any already present. |
+| `linkedin_open_section_editor` | Open the form for `intro`, `about`, `skills`, `experience`, `education`, `certifications`, or `projects` and list its fields. |
 
 ---
 
 ## ⚙️ Environment Variables
 
-All optional — see [`.env.example`](.env.example).
+All settings are optional — see [`.env.example`](.env.example).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or `chromium` (bundled). Falls back to bundled Chromium if the channel is missing. |
-| `BROWSER_HEADLESS` | visible on desktops | `true` hides the window. Signing in needs a visible window. |
-| `WEB_BROWSER_MCP_CACHE_DIR` | `~/.web-browser-mcp` | Browser profiles and state. |
-| `BROWSER_TIMEOUT_MS` | `30000` | Page load timeout. |
-| `BROWSER_VIEWPORT_WIDTH` / `_HEIGHT` | `1366` / `900` | Window size. |
-| `BROWSER_CONFIRM_SUBMITS` | `true` | Gate save/submit/delete-style clicks behind `confirm=true`. |
-| `BROWSER_ALLOWED_DOMAINS` | *(all)* | Comma-separated allowlist (subdomains included). |
-| `BROWSER_BLOCKED_DOMAINS` | *(none)* | Comma-separated blocklist. |
+| `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or `chromium` (falls back to bundled Chromium if missing). |
+| `BROWSER_HEADLESS` | visible on desktops | `true` hides the browser window (manual login requires visible mode). |
+| `WEB_BROWSER_MCP_CACHE_DIR` | `~/.web-browser-mcp` | Directory for persistent browser profiles and rate-limit state. |
+| `BROWSER_TIMEOUT_MS` | `30000` | Default Playwright navigation/action timeout. |
+| `BROWSER_VIEWPORT_WIDTH` / `_HEIGHT` | `1366` / `900` | Browser viewport dimensions. |
+| `BROWSER_CONFIRM_SUBMITS` | `true` | Require `confirm=true` on save/submit/delete-style clicks. |
+| `BROWSER_ALLOWED_DOMAINS` | *(all)* | Comma-separated domain allowlist (subdomains included). |
+| `BROWSER_BLOCKED_DOMAINS` | *(none)* | Comma-separated domain blocklist. |
 | `BROWSER_ALLOW_FILE_URLS` | `false` | Allow opening local `file://` pages. |
-| `LINKEDIN_MAX_WRITES_PER_DAY` | `20` | Daily cap on LinkedIn edits. |
-| `LINKEDIN_MIN_SECONDS_BETWEEN_WRITES` | `10` | Minimum gap between LinkedIn edits. |
-| `WEB_BROWSER_MCP_DISABLE_LINKEDIN` | `false` | Turn off the LinkedIn tools (set in hosted containers). |
-| `MCP_TRANSPORT`, `HOST`, `PORT` | `stdio`, `127.0.0.1`, `8080` | HTTP mode for hosted use (`--http` also works). |
+| `LINKEDIN_MAX_WRITES_PER_DAY` | `20` | Daily limit on LinkedIn write operations. |
+| `LINKEDIN_MIN_SECONDS_BETWEEN_WRITES` | `10` | Minimum delay between LinkedIn write operations. |
+| `WEB_BROWSER_MCP_DISABLE_LINKEDIN` | `false` | Disable LinkedIn tools (enabled in headless Docker containers). |
+| `MCP_TRANSPORT`, `HOST`, `PORT` | `stdio`, `127.0.0.1`, `8080` | Transport selection (`stdio`, `streamable-http`, `sse`; `--http` also enables HTTP). |
 
 ---
 
 ## 💼 LinkedIn Notes
 
-- **Use it for your own profile, at human pace.** LinkedIn's User Agreement restricts automated access. This server only acts on your own signed-in account, never scrapes other people, never logs in for you, saves only what you approve, and rate-limits edits — but any automation carries some risk to the account. Use it at your own discretion.
-- **Layouts change.** LinkedIn updates its pages often. Each editor is opened through several known entry points; if all fail, the tool says so and lists the open form's fields so the generic `browser_*` tools can finish the edit. Please open an issue if a LinkedIn tool stops working.
-- **Hosted mode** (Docker / MCPize) runs headless and has the LinkedIn tools disabled, because signing in needs a window on your own computer. Use LinkedIn features with a local install.
+- **Use only on your own account at human pace.** LinkedIn's User Agreement restricts automated access. This server only operates on your own signed-in session, never scrapes third-party profiles, never enters credentials, previews every change before saving, and enforces daily/per-action rate limits — yet any automation carries account risk, so use it at your own discretion.
+- **UI changes:** LinkedIn updates DOM selectors frequently. Each editor tries multiple known entry points and falls back to listing open form fields so `browser_*` tools can finish edits if needed.
+- **Container / HTTP mode:** Runs headless with `WEB_BROWSER_MCP_DISABLE_LINKEDIN=true`, because logging in requires a visible browser window on your local machine.
 
 ---
 
@@ -238,12 +286,12 @@ All optional — see [`.env.example`](.env.example).
 
 | Problem | Fix |
 |---|---|
-| *"Could not start a browser … Executable doesn't exist"* | Install Google Chrome, or set `BROWSER_CHANNEL=chromium` and run `playwright install chromium`. |
-| *"profile folder is in use"* | Another window is using that profile (e.g. a previous run). Close it or use a different `session_name`. |
-| Search says *CAPTCHA* | Headless browsers often get bot checks. Use the default `engine="auto"`, run with a visible window, or solve it yourself in the window. |
-| *"Ref … run browser_snapshot again"* | The page changed after the snapshot; take a new one. |
-| LinkedIn: *"Not signed in"* | Run `linkedin_open_login` and sign in in the window, then `linkedin_check_login`. |
-| Windows: *"An Application Control policy has blocked this file"* | Smart App Control blocked a freshly downloaded Python extension. Install with the versions in `uv.lock` (`uv sync`) or allow the file. |
+| *"Could not start a browser … Executable doesn't exist"* | Install Google Chrome, or set `BROWSER_CHANNEL=chromium` and run `uv run playwright install chromium`. |
+| *"profile folder is in use"* | Another browser process is holding that profile; close it or pass a different `session_name`. |
+| Search reports *CAPTCHA* | Headless traffic triggers bot checks more often. Use `engine="auto"`, run with `BROWSER_HEADLESS=false`, or solve it in the visible window. |
+| *"Ref … run browser_snapshot again"* | The DOM updated or navigated after the snapshot; run `browser_snapshot` again to refresh refs. |
+| LinkedIn: *"Not signed in"* | Call `linkedin_open_login`, sign in in the browser window, then call `linkedin_check_login`. |
+| Windows: *"An Application Control policy has blocked this file"* | Smart App Control blocked a new native extension; install locked dependencies via `uv sync` or allow the binary. |
 
 ---
 
@@ -254,7 +302,7 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-The suite (27 tests) drives a **real headless browser** against a local fake website — including a fake search engine and a fake LinkedIn with edit dialogs — so it needs no internet access and no LinkedIn account. Set `BROWSER_CHANNEL=chromium` to test with the bundled browser.
+The test suite (**27 tests**) launches a real headless browser against [tests/fake_site.py](tests/fake_site.py) — simulating regular pages, DuckDuckGo/Bing search results with CAPTCHA fallback, and a LinkedIn profile editor — so it requires **no internet access and no real LinkedIn account**. Set `BROWSER_CHANNEL=chromium` to test against bundled Chromium instead of Chrome.
 
 ---
 

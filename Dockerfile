@@ -16,7 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY pyproject.toml README.md CHANGELOG.md LICENSE* ./
-COPY server.py browser_manager.py config.py linkedin.py web_research.py ./
+COPY src ./src
 
 RUN pip install --no-cache-dir . \
     && playwright install --with-deps chromium \
@@ -31,4 +31,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8080')+'/health')" || exit 1
 
-CMD ["python", "server.py"]
+CMD ["python", "-m", "web_browser_mcp"]

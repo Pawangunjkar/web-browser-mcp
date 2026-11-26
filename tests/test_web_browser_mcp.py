@@ -22,8 +22,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
 TESTS = Path(__file__).resolve().parent
-for p in (str(ROOT), str(TESTS)):
+for p in (str(SRC), str(TESTS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -34,10 +35,9 @@ os.environ["LINKEDIN_MIN_SECONDS_BETWEEN_WRITES"] = "0"
 os.environ["LINKEDIN_MAX_WRITES_PER_DAY"] = "50"
 
 import fake_site  # noqa: E402
-import server  # noqa: E402
-import web_research  # noqa: E402
-from browser_manager import BrowserManager  # noqa: E402
-from config import BrowserSettings, WriteLimiter, check_url_allowed, normalize_url  # noqa: E402
+from web_browser_mcp import server, web_research  # noqa: E402
+from web_browser_mcp.browser_manager import BrowserManager  # noqa: E402
+from web_browser_mcp.config import BrowserSettings, WriteLimiter, check_url_allowed, normalize_url  # noqa: E402
 
 
 # ============================================================

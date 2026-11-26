@@ -9,8 +9,8 @@ LinkedIn profile polished — with you signed in yourself and every save
 confirmed by you.
 
 Usage:
-    uv run server.py                # Run via stdio (for Claude Code / Cursor / Claude Desktop)
-    uv run mcp dev server.py        # Run with MCP Inspector (for testing)
+    uv run web-browser-mcp          # Run via stdio (for Claude Code / Cursor / Claude Desktop)
+    uv run web-browser-mcp --http   # Run via streamable HTTP on PORT (default 8080)
 """
 
 from __future__ import annotations
@@ -25,9 +25,10 @@ from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP, Image
 
-from browser_manager import MAX_TEXT_CHARS, BrowserError, BrowserManager, settle
-from config import BrowserSettings, WriteLimiter
-from linkedin import (
+from web_browser_mcp import web_research as research
+from web_browser_mcp.browser_manager import MAX_TEXT_CHARS, BrowserError, BrowserManager, settle
+from web_browser_mcp.config import BrowserSettings, WriteLimiter
+from web_browser_mcp.linkedin import (
     ABOUT_LIMIT,
     EDITOR_URLS,
     HEADLINE_LIMIT,
@@ -37,7 +38,6 @@ from linkedin import (
     base_url as linkedin_base_url,
     validate_text,
 )
-import web_research as research
 
 # ============================================================
 # Initialize MCP Server
@@ -854,7 +854,7 @@ async def web_research(
 
 
 def _url_problem(url: str) -> Optional[str]:
-    from config import check_url_allowed
+    from web_browser_mcp.config import check_url_allowed
     return check_url_allowed(url, _settings)
 
 
