@@ -86,6 +86,8 @@ web_browser_mcp.server (FastMCP — 34 tools + /health)
 |---|---|
 | **You sign in, not the AI** | `linkedin_open_login` opens a visible browser window so you enter your own credentials and 2FA. `browser_fill` **refuses to type into password, credit-card, or one-time-code fields** on any site. |
 | **Preview before every change** | LinkedIn tools return *current vs. new* text first and only save when called again with `confirm=true`. Mutating clicks (`Save`, `Submit`, `Post`, `Send`, `Delete`, `Buy`, `Follow`, `Connect`) follow the same gate. |
+| **Enter follows the same gate** | Pressing Enter where it would submit a form or send a message (`browser_fill(press_enter=true)`, `browser_press_key("Enter")`) needs `confirm=true`; search boxes are exempt. |
+| **Tool annotations** | Read-only tools carry `readOnlyHint` and navigation tools `destructiveHint=false`, so MCP clients can auto-approve them while still prompting for clicks, typing, and LinkedIn edits. |
 | **Site pop-ups follow the same gate** | JavaScript `alert` / `confirm` / `prompt` pop-ups are reported in the tool output and dismissed, unless they appear during a `browser_click(confirm=true)` the user already approved. |
 | **Rate limiting on LinkedIn** | Enforces a daily cap (default 20 edits/day) and minimum cooldown (default 10 s between edits), persisted on disk across server restarts. |
 | **No CAPTCHA bypassing** | Bot challenges are reported to the user; `web_search` falls back across search engines rather than attempting to solve or evade challenges. |
@@ -241,9 +243,9 @@ Every tool accepts an optional `session_name` (default `"default"`). Each sessio
 | Tool | Description |
 |---|---|
 | `browser_click` | Click by `ref`, `selector`, or `text`. Save/submit/send/post/delete clicks require `confirm=true`. |
-| `browser_fill` | Type into an input (optionally press Enter). Refuses password, card, and OTP fields. |
-| `browser_select_option` | Select a dropdown option by value or label. |
-| `browser_press_key` | Press a key or shortcut (`Enter`, `Escape`, `Control+A`, …). |
+| `browser_fill` | Type into an input (optionally press Enter; Enter that would submit or send needs `confirm=true`). Refuses password, card, and OTP fields. |
+| `browser_select_option` | Select a dropdown option by label or value (case-insensitive); lists the available options when nothing matches. |
+| `browser_press_key` | Press a key or shortcut (`Enter`, `Escape`, `Control+A`, …); Enter that would submit or send needs `confirm=true`. |
 | `browser_hover` | Move the mouse over an element by `ref`, `selector`, or `text` to open hover menus or tooltips. |
 | `browser_scroll` | Scroll `up`, `down`, `top`, `bottom`, or scroll an element ref into view. |
 
@@ -325,7 +327,7 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-The test suite (**30 tests**, run by GitHub Actions on every push and pull request) launches a real headless browser against [tests/fake_site.py](tests/fake_site.py) — simulating regular pages, DuckDuckGo/Bing search results with CAPTCHA fallback, and a LinkedIn profile editor — so it requires **no internet access and no real LinkedIn account**. Set `BROWSER_CHANNEL=chromium` to test against bundled Chromium instead of Chrome.
+The test suite (**34 tests**, run by GitHub Actions on every push and pull request) launches a real headless browser against [tests/fake_site.py](tests/fake_site.py) — simulating regular pages, DuckDuckGo/Bing search results with CAPTCHA fallback, and a LinkedIn profile editor — so it requires **no internet access and no real LinkedIn account**. Set `BROWSER_CHANNEL=chromium` to test against bundled Chromium instead of Chrome.
 
 ---
 

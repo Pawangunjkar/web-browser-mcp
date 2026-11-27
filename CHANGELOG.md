@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] — 2026-11-27
+
+### Added
+- Enter is confirmation-gated like save/submit clicks: `browser_fill(press_enter=true)` and
+  `browser_press_key("Enter")` need `confirm=true` when Enter would submit a form, send a message
+  (text areas, rich-text chat boxes), or activate a save/delete-style button. Search boxes are not gated.
+- MCP tool annotations: read-only tools (reading, searching, screenshots, status) are marked
+  `readOnlyHint`, navigation/tab tools `destructiveHint=false`, so clients can auto-approve safe calls.
+
+### Changed
+- Replies are sent once as text instead of text plus a duplicate structured-JSON copy, halving the
+  payload every tool call puts into the client's context. Requires `mcp>=1.10`.
+- `browser_select_option` matches labels and values case-insensitively (then a unique partial label),
+  fails immediately with the list of available options, and explains when the element is not a
+  `<select>` — previously a wrong option waited 60 s for two timeouts.
+- `text=` and `label=` element lookups prefer an exact match, so `text="Open"` clicks the "Open"
+  button rather than an earlier "Open settings" label.
+
 ## [1.1.0] — 2026-11-27
 
 ### Added

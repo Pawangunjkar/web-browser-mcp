@@ -171,16 +171,33 @@ _LINKS_JS = r"""
 """
 
 _ELEMENT_INFO_JS = r"""
-el => ({
-  tag: el.tagName.toLowerCase(),
-  type: (el.getAttribute('type') || '').toLowerCase(),
-  role: el.getAttribute('role') || '',
-  text: (el.innerText || el.value || '').replace(/\s+/g, ' ').trim().slice(0, 120),
-  label: (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
-  autocomplete: (el.getAttribute('autocomplete') || '').toLowerCase(),
-  name: (el.getAttribute('name') || '').toLowerCase(),
-  inForm: !!el.closest('form'),
-})
+el => {
+  const form = el.closest('form');
+  const formHints = form ? [form.getAttribute('role'), form.getAttribute('action'), form.id,
+                            form.getAttribute('class'), form.getAttribute('aria-label')].join(' ') : '';
+  const type = (el.getAttribute('type') || '').toLowerCase();
+  const name = (el.getAttribute('name') || '').toLowerCase();
+  return {
+    tag: el.tagName.toLowerCase(),
+    type,
+    role: el.getAttribute('role') || '',
+    text: (el.innerText || el.value || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+    label: (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
+    autocomplete: (el.getAttribute('autocomplete') || '').toLowerCase(),
+    name,
+    inForm: !!form,
+    searchForm: !!form && (/search/i.test(formHints) || !!form.querySelector('input[type=search]')),
+    searchField: type === 'search' || el.getAttribute('role') === 'searchbox' || !!el.closest('[role=search]') ||
+                 /^(q|query|search|keywords?)$/.test(name),
+    multiline: el.tagName === 'TEXTAREA' || el.isContentEditable,
+  };
+}
+"""
+
+_SELECT_OPTIONS_JS = r"""
+el => el.tagName === 'SELECT'
+  ? Array.from(el.options).map(o => ({label: o.label.replace(/\s+/g, ' ').trim(), value: o.value}))
+  : null
 """
 
 
@@ -450,10 +467,10 @@ class BrowserManager:
             locator = page.locator(selector)
             what = f"selector {selector!r}"
         elif label:
-            locator = page.get_by_label(label)
+            locator = await self._exact_first(page.get_by_label(label, exact=True), page.get_by_label(label))
             what = f"label {label!r}"
         elif text:
-            locator = page.get_by_text(text)
+            locator = await self._exact_first(page.get_by_text(text, exact=True), page.get_by_text(text))
             what = f"text {text!r}"
         else:
             raise BrowserError("❌ Say which element: pass ref (from browser_snapshot), selector, label, or text.")
@@ -472,6 +489,17 @@ class BrowserManager:
                     return candidate
         return locator.first
 
+    @staticmethod
+    async def _exact_first(exact: Locator, partial: Locator) -> Locator:
+        """Prefer exact matches when one of them is visible; otherwise fall back to substring matches."""
+        try:
+            for i in range(min(await exact.count(), 20)):
+                if await exact.nth(i).is_visible():
+                    return exact
+        except PlaywrightError:
+            pass
+        return partial
+
     async def element_info(self, locator: Locator) -> dict:
         return await locator.evaluate(_ELEMENT_INFO_JS)
 
@@ -482,6 +510,48 @@ class BrowserManager:
             return True
         words = " ".join([info.get("text", ""), info.get("label", "")])
         return bool(_SUBMIT_WORDS.search(words))
+
+    @classmethod
+    def enter_may_submit(cls, info: dict) -> bool:
+        """Heuristic: would pressing Enter in this element submit a form or send a message?"""
+        if info.get("searchField") or info.get("searchForm"):
+            return False
+        if info.get("tag") in ("button", "a") or info.get("role") in ("button", "link", "menuitem"):
+            return cls.looks_like_submit(info)
+        return bool(info.get("inForm") or info.get("multiline"))
+
+    async def focused_info(self, page: Page) -> Optional[dict]:
+        """element_info() for the focused element, or None when nothing is focused."""
+        focused = page.locator("*:focus")
+        try:
+            if not await focused.count():
+                return None
+            return await self.element_info(focused.last)
+        except PlaywrightError:
+            return None
+
+    async def select(self, locator: Locator, option: str) -> str:
+        """Pick a <select> option by label or value (exact, then partial); return the chosen label."""
+        options = await locator.evaluate(_SELECT_OPTIONS_JS)
+        if options is None:
+            raise BrowserError(
+                "❌ That element is not a <select> dropdown. For custom dropdowns, click it, run "
+                "browser_snapshot, and click the option."
+            )
+        wanted = option.strip().lower()
+        match = (
+            next((o for o in options if o["label"].lower() == wanted), None)
+            or next((o for o in options if o["value"].lower() == wanted), None)
+        )
+        if match is None:
+            partial = [o for o in options if wanted and wanted in o["label"].lower()]
+            match = partial[0] if len(partial) == 1 else None
+        if match is None:
+            listed = ", ".join(repr(o["label"]) for o in options[:40])
+            more = f" … (+{len(options) - 40} more)" if len(options) > 40 else ""
+            raise BrowserError(f"❌ No option matches {option!r}. Options: {listed or '(none)'}{more}")
+        await locator.select_option(value=match["value"])
+        return match["label"]
 
     @staticmethod
     def is_secret_field(info: dict) -> bool:

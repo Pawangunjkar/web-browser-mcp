@@ -81,6 +81,16 @@ class HeuristicTests(unittest.TestCase):
         self.assertFalse(lk({"text": "Updates", "label": ""}))
         self.assertFalse(lk({"text": "Posts", "label": ""}))
 
+    def test_enter_submit_detection(self):
+        enter = BrowserManager.enter_may_submit
+        self.assertTrue(enter({"tag": "input", "inForm": True}))
+        self.assertTrue(enter({"tag": "div", "multiline": True}))  # chat boxes send on Enter
+        self.assertTrue(enter({"tag": "button", "text": "Delete"}))
+        self.assertFalse(enter({"tag": "input", "inForm": True, "searchField": True}))
+        self.assertFalse(enter({"tag": "input", "inForm": True, "searchForm": True}))
+        self.assertFalse(enter({"tag": "input", "inForm": False}))
+        self.assertFalse(enter({"tag": "button", "text": "Show more"}))
+
     def test_secret_fields(self):
         secret = BrowserManager.is_secret_field
         self.assertTrue(secret({"type": "password"}))
@@ -231,6 +241,35 @@ class PageToolTests(BrowserTestCase):
         self.assertIn("✅ Hovering", self.run_async(server.browser_hover(selector="#menu")))
         self.assertIn("Menu opened", self.run_async(server.browser_get_text(selector="#status")))
 
+    def test_enter_in_form_is_gated_but_search_is_not(self):
+        self.run_async(server.browser_navigate(self.url("/page1")))
+        gated = self.run_async(server.browser_fill("Bob", selector="#name", press_enter=True))
+        self.assertIn("Enter was NOT pressed", gated)
+        self.assertIn("Idle", self.run_async(server.browser_get_text(selector="#status")))
+        self.assertIn("Confirmation required", self.run_async(server.browser_press_key("Enter")))
+        self.assertIn("Idle", self.run_async(server.browser_get_text(selector="#status")))
+        self.run_async(server.browser_fill("Bob", selector="#name", press_enter=True, confirm=True))
+        self.assertIn("Saved: Bob", self.run_async(server.browser_get_text(selector="#status")))
+
+        self.run_async(server.browser_navigate(self.url("/page3")))
+        out = self.run_async(server.browser_fill("rollouts", label="Search the site", press_enter=True))
+        self.assertNotIn("NOT pressed", out)
+        self.assertIn("Searched: rollouts", self.run_async(server.browser_get_text(selector="#status")))
+
+    def test_select_unknown_option_fails_fast_with_choices(self):
+        import time
+        self.run_async(server.browser_navigate(self.url("/page1")))
+        start = time.monotonic()
+        out = self.run_async(server.browser_select_option("Purple", selector="#color"))
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertIn("'Red', 'Green'", out)
+        self.assertIn("✅ Selected 'Green'", self.run_async(server.browser_select_option("green", selector="#color")))
+
+    def test_text_prefers_exact_match(self):
+        self.run_async(server.browser_navigate(self.url("/page3")))
+        self.run_async(server.browser_click(text="Open"))
+        self.assertIn("Opened", self.run_async(server.browser_get_text(selector="#status")))
+
     def test_closing_earlier_tab_keeps_active_tab(self):
         self.run_async(server.browser_navigate(self.url("/page1")))
         first = server._browser.get_existing("default").active_index
@@ -298,15 +337,19 @@ class McpProtocolTests(BrowserTestCase):
         async def scenario():
             async with create_connected_server_and_client_session(server.mcp._mcp_server) as client:
                 tools = await client.list_tools()
-                names = {t.name for t in tools.tools}
                 nav = await client.call_tool("browser_navigate", {"url": self.url("/page2")})
                 shot = await client.call_tool("browser_screenshot", {})
-                return names, nav, shot
+                return {t.name: t for t in tools.tools}, nav, shot
 
-        names, nav, shot = self.run_async(scenario())
+        tools, nav, shot = self.run_async(scenario())
         self.assertEqual(server.mcp._mcp_server.version, server.__version__)
-        self.assertEqual(len(names), 34)
-        self.assertIn("browser_hover", names)
+        self.assertEqual(len(tools), 34)
+        self.assertIn("browser_hover", tools)
+        self.assertTrue(tools["web_research"].annotations.readOnlyHint)
+        self.assertFalse(tools["browser_navigate"].annotations.destructiveHint)
+        self.assertTrue(tools["browser_click"].annotations.destructiveHint)
+        self.assertTrue(all(t.outputSchema is None for t in tools.values()))
+        self.assertIsNone(nav.structuredContent)  # replies are not duplicated as JSON
         self.assertIn("Page Two", nav.content[0].text)
         self.assertEqual(shot.content[0].type, "image")
         self.assertEqual(shot.content[0].mimeType, "image/jpeg")

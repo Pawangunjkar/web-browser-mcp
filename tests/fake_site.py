@@ -52,6 +52,11 @@ PAGE3 = """<!doctype html><html><head><title>Widgets</title></head><body><main>
 <div id="status">Idle</div>
 <button id="trash" onclick="document.getElementById('status').innerText = confirm('Really delete this item?') ? 'Deleted' : 'Kept'">Trash</button>
 <div id="menu" onmouseenter="document.getElementById('status').innerText='Menu opened'">Account menu</div>
+<span>Open settings</span>
+<button onclick="document.getElementById('status').innerText='Opened'">Open</button>
+<form role="search" onsubmit="event.preventDefault(); document.getElementById('status').innerText='Searched: ' + this.q.value;">
+  <input name="q" aria-label="Search the site">
+</form>
 <fancy-widget></fancy-widget>
 <script>
 customElements.define('fancy-widget', class extends HTMLElement {

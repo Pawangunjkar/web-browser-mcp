@@ -24,6 +24,7 @@ import sys
 from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP, Image
+from mcp.types import ToolAnnotations
 
 from web_browser_mcp import __version__
 
@@ -54,7 +55,8 @@ mcp = FastMCP(
         "browser_click / browser_fill / browser_select_option / browser_hover. browser_get_text reads the page. "
         "LinkedIn: linkedin_open_login (the user signs in themselves), linkedin_get_my_profile, "
         "linkedin_update_headline / linkedin_update_about / linkedin_add_skills. "
-        "Every save/submit/post/delete click and every LinkedIn edit returns a preview first and "
+        "Every save/submit/post/delete click, every Enter that would submit a form or send a message, "
+        "and every LinkedIn edit returns a preview first and "
         "only acts when called again with confirm=true AFTER the user approves the preview. "
         "This server never types passwords or card numbers. Each session_name is a separate "
         "persistent browser profile (default: 'default')."
@@ -70,6 +72,16 @@ _linkedin = LinkedInHelper(_browser, _limiter)
 
 def _json(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+_READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
+_NON_DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
+_MAY_CHANGE_DATA = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
+
+
+def _tool(annotations: ToolAnnotations):
+    """Register a tool. Replies are plain text/images only (structured output would duplicate every reply)."""
+    return mcp.tool(annotations=annotations, structured_output=False)
 
 
 def _tool_errors(func):
@@ -142,7 +154,7 @@ def _format_snapshot(snap: dict, limit_note: bool = True) -> str:
 # CATEGORY 1: Browser Sessions (5 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_launch(
     session_name: str = "default",
@@ -178,7 +190,7 @@ async def browser_launch(
     )
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_close(session_name: str = "default") -> str:
     """
@@ -191,7 +203,7 @@ async def browser_close(session_name: str = "default") -> str:
     return f"✅ Closed browser session '{session_name}'." if closed else f"⚠️ No running session '{session_name}'."
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_close_all() -> str:
     """Close every browser session and stop the browser driver. Profiles stay on disk."""
@@ -199,7 +211,7 @@ async def browser_close_all() -> str:
     return f"✅ Closed {len(names)} session(s): {', '.join(names)}" if names else "⚠️ No running sessions."
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_status() -> str:
     """List running browser sessions with their tabs, active page, and profile folder."""
@@ -218,7 +230,7 @@ async def browser_status() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def browser_clear_profile(session_name: str = "default", confirm: bool = False) -> str:
     """
@@ -254,7 +266,7 @@ async def browser_clear_profile(session_name: str = "default", confirm: bool = F
 # CATEGORY 2: Navigation (5 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_navigate(url: str, session_name: str = "default") -> str:
     """
@@ -273,7 +285,7 @@ async def browser_navigate(url: str, session_name: str = "default") -> str:
         return f"{await _page_header(page)}\n   HTTP {status if status is not None else '—'}{_dialog_notes(sess)}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_back(session_name: str = "default") -> str:
     """
@@ -291,7 +303,7 @@ async def browser_back(session_name: str = "default") -> str:
         return f"{await _page_header(page)}{note}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_forward(session_name: str = "default") -> str:
     """
@@ -308,7 +320,7 @@ async def browser_forward(session_name: str = "default") -> str:
         return await _page_header(page)
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_reload(session_name: str = "default") -> str:
     """
@@ -325,7 +337,7 @@ async def browser_reload(session_name: str = "default") -> str:
         return await _page_header(page)
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_wait_for(
     text: str = "",
@@ -366,7 +378,7 @@ async def browser_wait_for(
 # CATEGORY 3: Reading Pages (4 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_get_text(
     selector: str = "",
@@ -402,7 +414,7 @@ async def browser_get_text(
         return f"{await _page_header(page)}\n\n{chunk}{footer}"
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_snapshot(scope: str = "all", max_elements: int = 150, session_name: str = "default") -> str:
     """
@@ -425,7 +437,7 @@ async def browser_snapshot(scope: str = "all", max_elements: int = 150, session_
         return f"{await _page_header(page)}\n\n{_format_snapshot(snap)}"
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_get_links(contains: str = "", max_links: int = 100, session_name: str = "default") -> str:
     """
@@ -446,7 +458,7 @@ async def browser_get_links(contains: str = "", max_links: int = 100, session_na
         return f"{await _page_header(page)}\n\n🔗 {len(links)} link(s):\n{body}"
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_screenshot(full_page: bool = False, ref: str = "", session_name: str = "default") -> Image:
     """
@@ -472,7 +484,7 @@ async def browser_screenshot(full_page: bool = False, ref: str = "", session_nam
 # CATEGORY 4: Interacting (6 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def browser_click(
     ref: str = "",
@@ -535,7 +547,7 @@ async def browser_click(
         return f"✅ Clicked {label!r}\n{await _page_header(sess.active_page())}{note}{_dialog_notes(sess)}"
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def browser_fill(
     value: str,
@@ -543,13 +555,16 @@ async def browser_fill(
     selector: str = "",
     label: str = "",
     press_enter: bool = False,
+    confirm: bool = False,
     session_name: str = "default",
 ) -> str:
     """
     Type into a text box, text area, or editable field (replacing its content).
 
     Password, card-number, and one-time-code fields are refused: the user types
-    those directly in the browser window.
+    those directly in the browser window. When press_enter would submit a form or
+    send a message (anything but a search box), the text is filled but Enter is
+    only pressed when called again with confirm=true after the user approves.
 
     Args:
         value: Text to enter
@@ -557,6 +572,7 @@ async def browser_fill(
         selector: CSS/Playwright selector (alternative)
         label: The field's label text (alternative)
         press_enter: Press Enter after typing (e.g. to run a search)
+        confirm: Required for press_enter when Enter would submit or send (default: False)
         session_name: Browser session to use
     """
     sess = await _browser.session(session_name)
@@ -570,17 +586,28 @@ async def browser_fill(
                 "types secrets — please type it yourself in the browser window."
             )
         await target.fill(value)
-        if press_enter:
-            await target.press("Enter")
-            await settle(page, idle_ms=2000)
         sess.action_count += 1
         shown = value if len(value) <= 80 else value[:77] + "..."
-        return f"✅ Filled {info.get('label') or info.get('name') or info.get('tag')!r} with {shown!r}" + (
-            f"\n{await _page_header(page)}" if press_enter else ""
-        )
+        filled = f"✅ Filled {info.get('label') or info.get('name') or info.get('tag')!r} with {shown!r}"
+        if not press_enter:
+            return filled
+        if _settings.confirm_submits and _browser.enter_may_submit(info) and not confirm:
+            return (
+                f"{filled}\n🔒 Enter was NOT pressed: in this field it would probably submit the form or send "
+                f"a message.\n  • Page: {page.url}\n"
+                "Show this to the user and call browser_fill again with confirm=true after they approve."
+            )
+        sess.dialogs.clear()
+        sess.accept_dialogs = confirm
+        try:
+            await target.press("Enter")
+            await settle(page, idle_ms=2000)
+        finally:
+            sess.accept_dialogs = False
+        return f"{filled}\n{await _page_header(page)}{_dialog_notes(sess)}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_select_option(
     option: str,
@@ -603,35 +630,49 @@ async def browser_select_option(
     async with sess.lock:
         page = await _browser.page(session_name)
         target = await _browser.locate(page, ref=ref, selector=selector, label=label)
-        try:
-            chosen = await target.select_option(label=option)
-        except Exception:
-            chosen = await target.select_option(value=option)
+        chosen = await _browser.select(target, option)
         sess.action_count += 1
-        return f"✅ Selected {option!r} ({', '.join(chosen)})"
+        return f"✅ Selected {chosen!r}"
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
-async def browser_press_key(key: str, session_name: str = "default") -> str:
+async def browser_press_key(key: str, confirm: bool = False, session_name: str = "default") -> str:
     """
     Press a key or shortcut in the active tab, e.g. 'Enter', 'Escape', 'Tab', 'PageDown', 'Control+A'.
 
+    Enter (or a shortcut ending in Enter) in a field where it would submit a form or
+    send a message is confirmation-gated, like save/submit clicks.
+
     Args:
         key: Key name (Playwright key syntax)
+        confirm: Required when Enter would submit or send (default: False)
         session_name: Browser session to use
     """
     sess = await _browser.session(session_name)
     async with sess.lock:
         page = await _browser.page(session_name)
+        if key.split("+")[-1].strip().lower() == "enter" and _settings.confirm_submits and not confirm:
+            info = await _browser.focused_info(page)
+            if info is not None and _browser.enter_may_submit(info):
+                name = info.get("label") or info.get("text") or info.get("name") or info.get("tag")
+                return (
+                    f"🔒 Confirmation required: pressing {key} in {info.get('tag')} {name!r} would probably "
+                    f"submit the form or send a message.\n  • Page: {page.url}\n"
+                    "Show this to the user and call browser_press_key again with confirm=true after they approve."
+                )
         sess.dialogs.clear()
-        await page.keyboard.press(key)
-        await settle(page, idle_ms=1500)
+        sess.accept_dialogs = confirm
+        try:
+            await page.keyboard.press(key)
+            await settle(page, idle_ms=1500)
+        finally:
+            sess.accept_dialogs = False
         sess.action_count += 1
         return f"✅ Pressed {key}\n{await _page_header(page)}{_dialog_notes(sess)}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_hover(ref: str = "", selector: str = "", text: str = "", session_name: str = "default") -> str:
     """
@@ -655,7 +696,7 @@ async def browser_hover(ref: str = "", selector: str = "", text: str = "", sessi
         return f"✅ Hovering over {info.get('text') or info.get('label') or info.get('tag')!r}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_scroll(
     direction: str = "down",
@@ -701,7 +742,7 @@ async def browser_scroll(
 # CATEGORY 5: Tabs (4 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def browser_list_tabs(session_name: str = "default") -> str:
     """
@@ -722,7 +763,7 @@ async def browser_list_tabs(session_name: str = "default") -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_new_tab(url: str = "", session_name: str = "default") -> str:
     """
@@ -741,7 +782,7 @@ async def browser_new_tab(url: str = "", session_name: str = "default") -> str:
         return f"✅ New tab [{sess.active_index}]\n{await _page_header(page)}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_switch_tab(index: int, session_name: str = "default") -> str:
     """
@@ -760,7 +801,7 @@ async def browser_switch_tab(index: int, session_name: str = "default") -> str:
     return f"✅ Switched to tab [{index}]\n{await _page_header(pages[index])}"
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def browser_close_tab(index: int = -1, session_name: str = "default") -> str:
     """
@@ -789,7 +830,7 @@ async def browser_close_tab(index: int = -1, session_name: str = "default") -> s
 # CATEGORY 6: Web Research (3 tools)
 # ============================================================
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def web_search(
     query: str,
@@ -824,7 +865,7 @@ async def web_search(
     return "\n".join(lines)
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def web_read_page(url: str, max_chars: int = 8000, session_name: str = "default") -> str:
     """
@@ -852,7 +893,7 @@ async def web_read_page(url: str, max_chars: int = 8000, session_name: str = "de
     )
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def web_research(
     query: str,
@@ -920,7 +961,7 @@ def _linkedin_enabled() -> Optional[str]:
     return None
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def linkedin_open_login(session_name: str = "default") -> str:
     """
@@ -950,7 +991,7 @@ async def linkedin_open_login(session_name: str = "default") -> str:
         )
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def linkedin_check_login(session_name: str = "default") -> str:
     """
@@ -970,7 +1011,7 @@ async def linkedin_check_login(session_name: str = "default") -> str:
         return f"✅ Signed in to LinkedIn.\n  • Profile: {linkedin_base_url()}/in/{slug}/\n  • Edits used today: {_limiter.used_today()}/{_settings.linkedin_max_writes_per_day}"
 
 
-@mcp.tool()
+@_tool(_READ_ONLY)
 @_tool_errors
 async def linkedin_get_my_profile(
     sections: str = "about,experience,education,skills,certifications,projects",
@@ -1044,7 +1085,7 @@ async def _linkedin_write(
         return await verify(page, slug)
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def linkedin_update_headline(headline: str, confirm: bool = False, session_name: str = "default") -> str:
     """
@@ -1084,7 +1125,7 @@ async def linkedin_update_headline(headline: str, confirm: bool = False, session
     return await _linkedin_write(session_name, "intro", preview, apply, verify, confirm)
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def linkedin_update_about(about: str, confirm: bool = False, session_name: str = "default") -> str:
     """
@@ -1124,7 +1165,7 @@ async def linkedin_update_about(about: str, confirm: bool = False, session_name:
     return await _linkedin_write(session_name, "about", preview, apply, verify, confirm)
 
 
-@mcp.tool()
+@_tool(_MAY_CHANGE_DATA)
 @_tool_errors
 async def linkedin_add_skills(skills: str, confirm: bool = False, session_name: str = "default") -> str:
     """
@@ -1197,7 +1238,7 @@ async def linkedin_add_skills(skills: str, confirm: bool = False, session_name: 
         return "\n".join(lines)
 
 
-@mcp.tool()
+@_tool(_NON_DESTRUCTIVE)
 @_tool_errors
 async def linkedin_open_section_editor(section: str, session_name: str = "default") -> str:
     """
