@@ -209,6 +209,41 @@ class PageToolTests(BrowserTestCase):
         self.run_async(server.browser_click(text="Go to page two"))
         self.assertIn("Page Two", self.run_async(server.browser_back()) + self.run_async(server.browser_forward()))
 
+    def refs(self, snap: str) -> dict:
+        return {line.split("]")[0].strip(" ["): line for line in snap.splitlines() if line.strip().startswith("[e")}
+
+    def test_confirm_popup_dismissed_until_user_confirms(self):
+        self.run_async(server.browser_navigate(self.url("/page3")))
+        out = self.run_async(server.browser_click(text="Trash"))
+        self.assertIn("Really delete this item?", out)
+        self.assertIn("dismissed", out)
+        self.assertIn("Kept", self.run_async(server.browser_get_text(selector="#status")))
+        out = self.run_async(server.browser_click(text="Trash", confirm=True))
+        self.assertIn("accepted", out)
+        self.assertIn("Deleted", self.run_async(server.browser_get_text(selector="#status")))
+
+    def test_snapshot_sees_shadow_dom_and_hover(self):
+        self.run_async(server.browser_navigate(self.url("/page3")))
+        refs = self.refs(self.run_async(server.browser_snapshot()))
+        shadow_ref = next(r for r, l in refs.items() if "'Shadow button'" in l)
+        self.assertIn("✅ Clicked", self.run_async(server.browser_click(ref=shadow_ref)))
+        self.assertIn("Shadow clicked", self.run_async(server.browser_get_text(selector="#status")))
+        self.assertIn("✅ Hovering", self.run_async(server.browser_hover(selector="#menu")))
+        self.assertIn("Menu opened", self.run_async(server.browser_get_text(selector="#status")))
+
+    def test_closing_earlier_tab_keeps_active_tab(self):
+        self.run_async(server.browser_navigate(self.url("/page1")))
+        first = server._browser.get_existing("default").active_index
+        self.run_async(server.browser_new_tab(self.url("/page2")))
+        self.run_async(server.browser_new_tab(self.url("/page3")))
+        self.run_async(server.browser_switch_tab(first + 1))
+        self.run_async(server.browser_close_tab(first))
+        tabs = self.run_async(server.browser_list_tabs())
+        active = next(line for line in tabs.splitlines() if "👉" in line)
+        self.assertIn("/page2", active)
+        self.run_async(server.browser_close_tab())
+        self.run_async(server.browser_close_tab())
+
     def test_blocked_urls(self):
         self.assertIn("file://", self.run_async(server.browser_navigate("file:///C:/Windows/win.ini")))
         self.assertIn("Only http(s)", self.run_async(server.browser_navigate("javascript:alert(1)")))
@@ -270,7 +305,8 @@ class McpProtocolTests(BrowserTestCase):
 
         names, nav, shot = self.run_async(scenario())
         self.assertEqual(server.mcp._mcp_server.version, server.__version__)
-        self.assertEqual(len(names), 33)
+        self.assertEqual(len(names), 34)
+        self.assertIn("browser_hover", names)
         self.assertIn("Page Two", nav.content[0].text)
         self.assertEqual(shot.content[0].type, "image")
         self.assertEqual(shot.content[0].mimeType, "image/jpeg")

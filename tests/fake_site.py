@@ -48,6 +48,21 @@ PAGE1 = """<!doctype html><html><head><title>Test Page One</title></head><body>
 PAGE2 = """<!doctype html><html><head><title>Page Two</title></head><body><main>
 <h1>Page two</h1><p>Reached the second page.</p></main></body></html>"""
 
+PAGE3 = """<!doctype html><html><head><title>Widgets</title></head><body><main>
+<div id="status">Idle</div>
+<button id="trash" onclick="document.getElementById('status').innerText = confirm('Really delete this item?') ? 'Deleted' : 'Kept'">Trash</button>
+<div id="menu" onmouseenter="document.getElementById('status').innerText='Menu opened'">Account menu</div>
+<fancy-widget></fancy-widget>
+<script>
+customElements.define('fancy-widget', class extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({mode: 'open'});
+    root.innerHTML = '<button onclick="document.getElementById(\\'status\\').innerText=\\'Shadow clicked\\'">Shadow button</button>';
+  }
+});
+</script>
+</main></body></html>"""
+
 
 def search_page(base: str, query: str) -> str:
     rows = []
@@ -133,6 +148,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(PAGE1)
         if path == "/page2":
             return self._send(PAGE2)
+        if path == "/page3":
+            return self._send(PAGE3)
         if path == "/ddg/html/":
             q = parse_qs(parts.query).get("q", [""])[0]
             return self._send(search_page(base, q))

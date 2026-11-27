@@ -62,11 +62,20 @@ _SNAPSHOT_JS = r"""
     '[role=radio]', '[role=switch]', '[role=tab]', '[role=menuitem]', '[role=option]',
     '[contenteditable=""]', '[contenteditable=true]'
   ].join(',');
-  document.querySelectorAll('[data-mcp-ref]').forEach(el => el.removeAttribute('data-mcp-ref'));
+  // Walk the page including open shadow roots (web components), in document order.
+  const walk = (root, fn) => {
+    for (const el of root.querySelectorAll('*')) {
+      fn(el);
+      if (el.shadowRoot) walk(el.shadowRoot, fn);
+    }
+  };
+  walk(document, el => { if (el.hasAttribute('data-mcp-ref')) el.removeAttribute('data-mcp-ref'); });
 
   const dialogs = Array.from(document.querySelectorAll('[role=dialog],[role=alertdialog],dialog[open]'))
     .filter(d => d.getClientRects().length > 0);
   const root = (scope === 'dialog' && dialogs.length) ? dialogs[dialogs.length - 1] : document;
+  const candidates = [];
+  walk(root, el => { if (el.matches(SELECTOR)) candidates.push(el); });
 
   const visible = el => {
     if (!el.getClientRects().length) return false;
@@ -79,7 +88,8 @@ _SNAPSHOT_JS = r"""
     if (aria) return aria;
     const by = el.getAttribute('aria-labelledby');
     if (by) {
-      const t = by.split(/\s+/).map(id => document.getElementById(id)).filter(Boolean)
+      const scopeRoot = el.getRootNode();
+      const t = by.split(/\s+/).map(id => scopeRoot.getElementById(id)).filter(Boolean)
         .map(n => n.innerText).join(' ');
       if (clean(t)) return t;
     }
@@ -90,7 +100,7 @@ _SNAPSHOT_JS = r"""
 
   const out = [];
   let n = 0;
-  for (const el of root.querySelectorAll(SELECTOR)) {
+  for (const el of candidates) {
     if (!visible(el)) continue;
     if (out.length >= maxElements) { n++; continue; }
     const ref = 'e' + (++n);
@@ -186,6 +196,8 @@ class BrowserSession:
     started_at: float = field(default_factory=time.time)
     action_count: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    accept_dialogs: bool = False
+    dialogs: list[str] = field(default_factory=list)
 
     @property
     def pages(self) -> list[Page]:
@@ -257,8 +269,6 @@ class BrowserManager:
                     continue
                 context.set_default_timeout(self.settings.timeout_ms)
                 context.set_default_navigation_timeout(self.settings.timeout_ms)
-                if not context.pages:
-                    await context.new_page()
                 session = BrowserSession(
                     name=session_name,
                     context=context,
@@ -266,6 +276,11 @@ class BrowserManager:
                     channel=attempt,
                     profile_dir=str(profile),
                 )
+                context.on("page", lambda p, s=session: self._watch_dialogs(s, p))
+                for existing_page in context.pages:
+                    self._watch_dialogs(session, existing_page)
+                if not context.pages:
+                    await context.new_page()
                 self._sessions[session_name] = session
                 print(f"Browser session '{session_name}' started ({attempt}, headless={headless})", file=sys.stderr)
                 return session
@@ -277,6 +292,29 @@ class BrowserManager:
                 hint = ("\nInstall Google Chrome, or run `playwright install chromium` "
                         "(use BROWSER_CHANNEL=chromium for the bundled browser).")
             raise BrowserError("❌ Could not start a browser.\n  " + "\n  ".join(errors) + hint)
+
+    @staticmethod
+    def _watch_dialogs(session: BrowserSession, page: Page) -> None:
+        """
+        Handle alert/confirm/prompt pop-ups and record them so tools can report them.
+
+        Dialogs are dismissed unless the current action was approved by the user
+        (session.accept_dialogs), so a site's own "Are you sure?" never bypasses the gate.
+        """
+
+        async def on_dialog(dialog) -> None:
+            accept = session.accept_dialogs
+            message = " ".join((dialog.message or "").split())[:200]
+            session.dialogs.append(f"{dialog.type} {message!r} → {'accepted' if accept else 'dismissed'}")
+            try:
+                if accept:
+                    await dialog.accept()
+                else:
+                    await dialog.dismiss()
+            except PlaywrightError:
+                pass
+
+        page.on("dialog", on_dialog)
 
     @staticmethod
     def _is_alive(session: BrowserSession) -> bool:

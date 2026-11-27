@@ -2,6 +2,7 @@
 
 > A Python **Model Context Protocol (MCP)** server that drives a **real Chrome browser** with Playwright — research the web in parallel, read and interact with any website using deterministic element refs, and keep your **LinkedIn profile** updated with human-in-the-loop confirmation.
 
+[![Tests](https://github.com/Pawangunjkar/web-browser-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/Pawangunjkar/web-browser-mcp/actions/workflows/tests.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![MCP Protocol](https://img.shields.io/badge/protocol-MCP-green.svg)](https://modelcontextprotocol.io/)
 [![Playwright](https://img.shields.io/badge/browser-Playwright-2EAD33.svg)](https://playwright.dev/python/)
@@ -19,7 +20,7 @@
 - [Configuring Your AI Client](#-configuring-your-ai-client)
 - [First Run: Sign In to LinkedIn](#-first-run-sign-in-to-linkedin)
 - [Example Prompts](#-example-prompts)
-- [Complete Tool Reference (33 tools)](#-complete-tool-reference-33-tools)
+- [Complete Tool Reference (34 tools)](#-complete-tool-reference-34-tools)
 - [Environment Variables](#-environment-variables)
 - [LinkedIn Notes](#-linkedin-notes)
 - [Troubleshooting](#-troubleshooting)
@@ -34,7 +35,7 @@
 |---|---|
 | **Parallel Web Research** | `web_research` searches and reads the top results concurrently across background tabs in one call. `web_search` and `web_read_page` give step-by-step control. |
 | **Any Website Navigation & Reading** | Open URLs, follow redirects, inspect paged text (with `main_content_only` filtering), extract links, and return viewport, full-page, or element screenshots as images. |
-| **Element Ref Targeting** | `browser_snapshot` indexes every interactive element on the page (or inside an open modal via `scope="dialog"`) with short refs (`e1`, `e2`, …) for reliable clicking, filling, and dropdown selection. |
+| **Element Ref Targeting** | `browser_snapshot` indexes every interactive element on the page, including inside web components (open shadow DOM), or only inside an open modal via `scope="dialog"`, with short refs (`e1`, `e2`, …) for reliable clicking, filling, and dropdown selection. |
 | **Persistent Browser Profiles** | Each `session_name` maps to a persistent Playwright user-data directory on disk (`~/.web-browser-mcp`). Sign in once and stay signed in across restarts, or isolate work/personal sessions. |
 | **LinkedIn Profile Management** | Read structured profile sections (`about`, `experience`, `education`, `skills`, etc.), preview and save headline/About/skill updates, or open section forms with mapped fields. |
 | **Built-in Guardrails** | Refuses to type into password, card-number, or OTP fields; gates submit/save/send/delete actions and all LinkedIn edits behind preview + `confirm=true`; reports CAPTCHAs instead of bypassing them. |
@@ -56,7 +57,7 @@ AI Client (Claude, Cursor, Antigravity, Windsurf, Cline)
         │
         │  MCP (stdio by default, or streamable-http / sse)
         ▼
-web_browser_mcp.server (FastMCP — 33 tools + /health)
+web_browser_mcp.server (FastMCP — 34 tools + /health)
         ├── BrowserManager (browser_manager.py)
         │     ├── Persistent Playwright Chromium/Chrome/Edge contexts per session_name
         │     ├── URL policy check (http/https only, allowlist/blocklist)
@@ -85,6 +86,7 @@ web_browser_mcp.server (FastMCP — 33 tools + /health)
 |---|---|
 | **You sign in, not the AI** | `linkedin_open_login` opens a visible browser window so you enter your own credentials and 2FA. `browser_fill` **refuses to type into password, credit-card, or one-time-code fields** on any site. |
 | **Preview before every change** | LinkedIn tools return *current vs. new* text first and only save when called again with `confirm=true`. Mutating clicks (`Save`, `Submit`, `Post`, `Send`, `Delete`, `Buy`, `Follow`, `Connect`) follow the same gate. |
+| **Site pop-ups follow the same gate** | JavaScript `alert` / `confirm` / `prompt` pop-ups are reported in the tool output and dismissed, unless they appear during a `browser_click(confirm=true)` the user already approved. |
 | **Rate limiting on LinkedIn** | Enforces a daily cap (default 20 edits/day) and minimum cooldown (default 10 s between edits), persisted on disk across server restarts. |
 | **No CAPTCHA bypassing** | Bot challenges are reported to the user; `web_search` falls back across search engines rather than attempting to solve or evade challenges. |
 | **URL & download guardrails** | `file://`, `javascript:`, and browser-internal URLs are blocked by default. Optional `BROWSER_ALLOWED_DOMAINS` / `BROWSER_BLOCKED_DOMAINS` restrict navigation; file downloads are disabled. |
@@ -99,7 +101,7 @@ web-browser-mcp/
 ├── src/web_browser_mcp/
 │   ├── __init__.py          # Package version
 │   ├── __main__.py          # `python -m web_browser_mcp` entry point
-│   ├── server.py            # FastMCP instance, 33 tools, /health, CLI transport setup
+│   ├── server.py            # FastMCP instance, 34 tools, /health, CLI transport setup
 │   ├── browser_manager.py   # Persistent Playwright contexts, snapshots, refs, click/fill guards
 │   ├── web_research.py      # Search engine fallback, redirect unwrapping, parallel tab reader
 │   ├── linkedin.py          # LinkedIn login check, profile reader, section editors
@@ -203,7 +205,7 @@ Because the browser profile persists on disk, you stay signed in across restarts
 
 ---
 
-## 🧰 Complete Tool Reference (33 tools)
+## 🧰 Complete Tool Reference (34 tools)
 
 Every tool accepts an optional `session_name` (default `"default"`). Each session maintains its own persistent browser profile.
 
@@ -234,7 +236,7 @@ Every tool accepts an optional `session_name` (default `"default"`). Each sessio
 | `browser_get_links` | List page links, optionally filtered by substring. |
 | `browser_screenshot` | Capture viewport, full page, or a specific ref as a JPEG image. |
 
-### Category 4: Interacting (5)
+### Category 4: Interacting (6)
 
 | Tool | Description |
 |---|---|
@@ -242,6 +244,7 @@ Every tool accepts an optional `session_name` (default `"default"`). Each sessio
 | `browser_fill` | Type into an input (optionally press Enter). Refuses password, card, and OTP fields. |
 | `browser_select_option` | Select a dropdown option by value or label. |
 | `browser_press_key` | Press a key or shortcut (`Enter`, `Escape`, `Control+A`, …). |
+| `browser_hover` | Move the mouse over an element by `ref`, `selector`, or `text` to open hover menus or tooltips. |
 | `browser_scroll` | Scroll `up`, `down`, `top`, `bottom`, or scroll an element ref into view. |
 
 ### Category 5: Tabs (4)
@@ -322,7 +325,7 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-The test suite (**27 tests**) launches a real headless browser against [tests/fake_site.py](tests/fake_site.py) — simulating regular pages, DuckDuckGo/Bing search results with CAPTCHA fallback, and a LinkedIn profile editor — so it requires **no internet access and no real LinkedIn account**. Set `BROWSER_CHANNEL=chromium` to test against bundled Chromium instead of Chrome.
+The test suite (**30 tests**, run by GitHub Actions on every push and pull request) launches a real headless browser against [tests/fake_site.py](tests/fake_site.py) — simulating regular pages, DuckDuckGo/Bing search results with CAPTCHA fallback, and a LinkedIn profile editor — so it requires **no internet access and no real LinkedIn account**. Set `BROWSER_CHANNEL=chromium` to test against bundled Chromium instead of Chrome.
 
 ---
 

@@ -51,7 +51,7 @@ mcp = FastMCP(
         "Web Browser MCP Server — drive a real Chrome browser with Playwright. "
         "Research: web_research (search + read top pages in one call), web_search, web_read_page. "
         "Pages: browser_navigate, then browser_snapshot to get element refs (e1, e2, ...) for "
-        "browser_click / browser_fill / browser_select_option. browser_get_text reads the page. "
+        "browser_click / browser_fill / browser_select_option / browser_hover. browser_get_text reads the page. "
         "LinkedIn: linkedin_open_login (the user signs in themselves), linkedin_get_my_profile, "
         "linkedin_update_headline / linkedin_update_about / linkedin_add_skills. "
         "Every save/submit/post/delete click and every LinkedIn edit returns a preview first and "
@@ -94,6 +94,18 @@ async def _page_header(page) -> str:
     except Exception:
         title = ""
     return f"🌐 {title or '(untitled)'}\n   {page.url}"
+
+
+def _dialog_notes(sess) -> str:
+    """Describe (and forget) the alert/confirm/prompt pop-ups recorded since the last call."""
+    seen = list(sess.dialogs)
+    sess.dialogs.clear()
+    if not seen:
+        return ""
+    lines = [f"\n   💬 The page showed a pop-up: {d}" for d in seen]
+    if any(d.endswith("dismissed") for d in seen):
+        lines.append("\n   (dismissed for safety; if the user wants to go ahead, repeat the click with confirm=true)")
+    return "".join(lines)
 
 
 def _format_snapshot(snap: dict, limit_note: bool = True) -> str:
@@ -230,6 +242,11 @@ async def browser_clear_profile(session_name: str = "default", confirm: bool = F
     if not profile.exists():
         return f"⚠️ No saved profile for '{session_name}'."
     shutil.rmtree(profile, ignore_errors=True)
+    if profile.exists():
+        return (
+            f"⚠️ Could not fully delete profile '{session_name}' ({profile}); some files are in use. "
+            "Close any browser window using it and try again."
+        )
     return f"✅ Deleted browser profile '{session_name}'."
 
 
@@ -250,9 +267,10 @@ async def browser_navigate(url: str, session_name: str = "default") -> str:
     sess = await _browser.session(session_name)
     async with sess.lock:
         page = await _browser.page(session_name)
+        sess.dialogs.clear()
         status = await _browser.goto(page, url)
         sess.action_count += 1
-        return f"{await _page_header(page)}\n   HTTP {status if status is not None else '—'}"
+        return f"{await _page_header(page)}\n   HTTP {status if status is not None else '—'}{_dialog_notes(sess)}"
 
 
 @mcp.tool()
@@ -451,7 +469,7 @@ async def browser_screenshot(full_page: bool = False, ref: str = "", session_nam
 
 
 # ============================================================
-# CATEGORY 4: Interacting (5 tools)
+# CATEGORY 4: Interacting (6 tools)
 # ============================================================
 
 @mcp.tool()
@@ -496,12 +514,15 @@ async def browser_click(
             opened.append(new_page)
 
         sess.context.on("page", on_page)
+        sess.dialogs.clear()
+        sess.accept_dialogs = confirm
         try:
             await target.click()
             await settle(page, idle_ms=2000)
             if not opened:
                 await asyncio.sleep(0.3)  # new tabs can appear just after the click returns
         finally:
+            sess.accept_dialogs = False
             sess.context.remove_listener("page", on_page)
         sess.action_count += 1
         note = ""
@@ -511,7 +532,7 @@ async def browser_click(
             if new_tab in sess.pages:
                 sess.active_index = sess.pages.index(new_tab)
             note = "\n   (the click opened a new tab; it is now the active tab)"
-        return f"✅ Clicked {label!r}\n{await _page_header(sess.active_page())}{note}"
+        return f"✅ Clicked {label!r}\n{await _page_header(sess.active_page())}{note}{_dialog_notes(sess)}"
 
 
 @mcp.tool()
@@ -603,10 +624,35 @@ async def browser_press_key(key: str, session_name: str = "default") -> str:
     sess = await _browser.session(session_name)
     async with sess.lock:
         page = await _browser.page(session_name)
+        sess.dialogs.clear()
         await page.keyboard.press(key)
         await settle(page, idle_ms=1500)
         sess.action_count += 1
-        return f"✅ Pressed {key}\n{await _page_header(page)}"
+        return f"✅ Pressed {key}\n{await _page_header(page)}{_dialog_notes(sess)}"
+
+
+@mcp.tool()
+@_tool_errors
+async def browser_hover(ref: str = "", selector: str = "", text: str = "", session_name: str = "default") -> str:
+    """
+    Move the mouse over an element, e.g. to open a hover menu or show a tooltip.
+
+    Take a new browser_snapshot afterwards to get refs for anything that appeared.
+
+    Args:
+        ref: Element ref from browser_snapshot (preferred)
+        selector: CSS/Playwright selector (alternative)
+        text: Visible text of the element (alternative)
+        session_name: Browser session to use
+    """
+    sess = await _browser.session(session_name)
+    async with sess.lock:
+        page = await _browser.page(session_name)
+        target = await _browser.locate(page, ref=ref, selector=selector, text=text)
+        info = await _browser.element_info(target)
+        await target.hover()
+        await page.wait_for_timeout(300)
+        return f"✅ Hovering over {info.get('text') or info.get('label') or info.get('tag')!r}"
 
 
 @mcp.tool()
@@ -635,17 +681,18 @@ async def browser_scroll(
             return f"✅ Scrolled element {ref} into view."
         height = _settings.viewport_height
         amount = max(0.1, min(float(pages), 20.0))
+        page_height = "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"
         if direction == "top":
             await page.evaluate("window.scrollTo(0, 0)")
         elif direction == "bottom":
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await page.evaluate(f"window.scrollTo(0, {page_height})")
         elif direction in ("down", "up"):
             await page.mouse.wheel(0, height * amount * (1 if direction == "down" else -1))
         else:
             return "❌ direction must be 'down', 'up', 'top', or 'bottom'."
         await page.wait_for_timeout(500)
         position = await page.evaluate(
-            "({y: Math.round(scrollY), max: Math.max(0, document.body.scrollHeight - innerHeight)})"
+            f"({{y: Math.round(scrollY), max: Math.max(0, {page_height} - innerHeight)}})"
         )
         return f"✅ Scrolled {direction}. Position {position['y']} / {position['max']} px."
 
@@ -732,6 +779,8 @@ async def browser_close_tab(index: int = -1, session_name: str = "default") -> s
         if len(pages) == 1:
             await sess.context.new_page()
         await pages[target_index].close()
+        if target_index < sess.active_index:
+            sess.active_index -= 1
         sess.active_index = max(0, min(sess.active_index, len(sess.pages) - 1))
         return f"✅ Closed tab [{target_index}]. Active: [{sess.active_index}] {sess.active_page().url}"
 
@@ -1188,7 +1237,7 @@ async def linkedin_open_section_editor(section: str, session_name: str = "defaul
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(_request):
     from starlette.responses import JSONResponse
-    return JSONResponse({"status": "healthy", "server": "web-browser-mcp"})
+    return JSONResponse({"status": "healthy", "server": "web-browser-mcp", "version": __version__})
 
 
 def main() -> None:

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0] — 2026-11-27
+
+### Added
+- `browser_hover` tool (34 tools total) for hover-only menus and tooltips.
+- `browser_snapshot` now finds elements inside open shadow roots (web components); their refs work
+  with click/fill/select like any other element.
+- JavaScript `alert` / `confirm` / `prompt` pop-ups are reported in the output of `browser_navigate`,
+  `browser_click`, and `browser_press_key`. They are dismissed by default and accepted only during a
+  `browser_click(confirm=true)`, so a site's own "Are you sure?" step follows the same approval gate.
+- `/health` reports the server version.
+- GitHub Actions workflow running the full browser test suite on every push and pull request.
+
+### Fixed
+- `browser_close_tab` kept the wrong tab active when closing a tab to the left of the active one.
+- `browser_clear_profile` reported success even when files in the profile were locked and not deleted.
+- `browser_scroll` used `document.body` height only, giving wrong positions on pages that scroll `<html>`.
+
 ## [1.0.0] — 2026-11-24
 
 ### Added

@@ -1,6 +1,6 @@
 [project]
 name = "web-browser-mcp"
-version = "1.0.0"
+version = "1.1.0"
 description = "MCP server that drives a real Chrome browser with Playwright — web research, page reading and interaction, and LinkedIn profile editing with human approval"
 requires-python = ">=3.10"
 authors = [
